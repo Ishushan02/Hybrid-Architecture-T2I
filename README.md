@@ -9,6 +9,7 @@ Like I have got quite good Ideas to use on, like
 - Gating Mechanism in Transformer, it's one of the award winning paper in Neurips 2025, I can include that
 - Obviously TRM as well, I have included it in my previous Architecture as well
 - New Idea of Hyper-Connections, a recent paper from DeepSeek is also a fine work which showed it possibility over Normal single lane channel training.. 
+- Other Idea of multiple Text Encoder (Qwen, BGE,  etc) nut I don't have that much memory to load all of them and train, I would use Qwen for this project.
 
 Well, but I don't have that much GPU, to try everything hence will come up with something efficient
 
