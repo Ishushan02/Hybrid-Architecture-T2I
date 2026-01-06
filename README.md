@@ -13,3 +13,7 @@ Like I have got quite good Ideas to use on, like
 
 Well, but I don't have that much GPU, to try everything hence will come up with something efficient
 
+- I am thinking to scrape the Diffusion process entirely, but to produce fine refinement image we need the denoising step again and again. So, what to do
+you know why not just include the denoising process during the forward propagation. 
+
+- I have other thought of why not try it with VEctorized-VAE (VQVAE).. I mean take in the concept of the CodeBook and utilize it as memory and latent representation ?, wanna give it a try ? let's see
