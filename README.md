@@ -17,3 +17,12 @@ Well, but I don't have that much GPU, to try everything hence will come up with 
 you know why not just include the denoising process during the forward propagation. 
 
 - I have other thought of why not try it with VEctorized-VAE (VQVAE).. I mean take in the concept of the CodeBook and utilize it as memory and latent representation ?, wanna give it a try ? let's see
+
+
+## The Main Idea would be to work in latent space rather than pixel space and token Space, This idea is from JePA papers like LJepa, VLJepa and the word Models which tries to train everything in the latent space and they have performed great results improvement.
+
+Cool, After certain researching and paper reading.. 
+No one has tried the approach of VQVAE + Transformer... for text to Image Generation... well let's try it out.. 
+Remeber we succeded greatly when doing text to Video using VQVAE.. that really showed good results, hopefully this works out well.
+
+Have Started the VQVAE Pipeline Training over the Image latents when it is compressed on by DCAE
