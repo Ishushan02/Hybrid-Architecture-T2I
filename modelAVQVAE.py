@@ -208,7 +208,7 @@ class VecQVAE(nn.Module):
 
 DCAEEncoder = AutoencoderDC.from_pretrained(f"mit-han-lab/dc-ae-f64c128-in-1.0-diffusers", torch_dtype=torch.float32).to(device).eval()
 
-datasetPath = ""
+datasetPath = "Tiny-Recursive-Model-for-Text-To-Image-Generation/"
 data = pd.read_csv(datasetPath + "dataset/COCO2017.csv")
 # data.head()
 
@@ -249,11 +249,15 @@ INPCHANNELS = 128
 torchDataset = ImageDataset(data, rootDir=datasetPath)
 dataloader = DataLoader(torchDataset, batch_size=BATCHSIZE, shuffle = True)
 modelA = VecQVAE(inChannels = INPCHANNELS, hiddenDim = HIDDENDIM, codeBookdim = CODEBOOKDIM, embedDim = EMBEDDIM).to(device)
+modelA = torch.nn.DataParallel(modelA)
+modelA.to(device)
+print(f"Total Parameters: {sum(p.numel() for p in modelA.parameters() if p.requires_grad)}")
+
 # lossFn = nn.MSELoss()
 optimizerA = torch.optim.Adam([
-                    {'params': modelA.encoder.parameters(), 'lr': 2e-4},
-                    {'params': modelA.decoder.parameters(), 'lr': 2e-4},
-                    {'params': modelA.vector_quantize.parameters(), 'lr': 1e-4}
+                    {'params': modelA.module.encoder.parameters(), 'lr': 2e-4},
+                    {'params': modelA.module.decoder.parameters(), 'lr': 2e-4},
+                    {'params': modelA.module.vector_quantize.parameters(), 'lr': 1e-4}
                 ], weight_decay=1e-5)
 schedulerA = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizerA, T_0=10, T_mult=2, eta_min=1e-6
@@ -269,21 +273,29 @@ print(checkpoint_path)
 
 if os.path.exists(checkpoint_path):
     checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
-    modelA.load_state_dict(checkpoint['model_state_dict'])
+    new_state_dict = {}
+    for k, v in checkpoint['model_state_dict'].items():
+        new_state_dict['module.' + k] = v  # add 'module.' prefix
+    modelA.load_state_dict(new_state_dict)
+    
+    # modelA.load_state_dict(checkpoint['model_state_dict'])
     optimizerA.load_state_dict(checkpoint['optimizer_state_dict'])
     schedulerA.load_state_dict(checkpoint['scheduler_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
+    lowestVQVAELoss = checkpoint['lowestLoss']
     for state in optimizerA.state.values():
         for k, v in state.items():
             if isinstance(v, torch.Tensor):
                 state[k] = v.to(device)
-    print(f"Resuming from epoch {start_epoch}")
+    print(f"Resuming from epoch {start_epoch} and lowest loss is {lowestVQVAELoss}")
 else:
+    lowestVQVAELoss = 2.53431
     print("Loading pretrained model...")
 
 
+# lowestVQVAELoss = 2.53431
 
-for each_epoch in range(epochs):
+for each_epoch in range(start_epoch, epochs):
     modelA.train()
     reconstruct_loss = 0.0
     codeb_loss = 0.0
@@ -345,11 +357,26 @@ for each_epoch in range(epochs):
     diverse_loss /= len(dataloader)
     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
 
+    if(vqvaeloss < lowestVQVAELoss):
+        print("Lowest Loss up until now is: ", vqvaeloss)
+        lowestVQVAELoss = vqvaeloss
+        baseDir = os.path.dirname(__file__)
+        lowestLossPath = os.path.join(baseDir, "models/lowestLoss", "vqvae.pt")
+        os.makedirs(os.path.dirname(lowestLossPath), exist_ok=True)
+        torch.save({
+            'epoch': each_epoch,
+            'model_state_dict': modelA.module.state_dict(),
+            'optimizer_state_dict': optimizerA.state_dict(),
+            'scheduler_state_dict': schedulerA.state_dict(),
+            'lowestLoss': lowestVQVAELoss
+        }, lowestLossPath)
+    
     torch.save({
         'epoch': each_epoch,
         'model_state_dict': modelA.module.state_dict(),
         'optimizer_state_dict': optimizerA.state_dict(),
-        'scheduler_state_dict': schedulerA.state_dict()
+        'scheduler_state_dict': schedulerA.state_dict(),
+        'lowestLoss': lowestVQVAELoss
     }, checkpoint_path)
     wandb.log({
         "Epoch": each_epoch,
