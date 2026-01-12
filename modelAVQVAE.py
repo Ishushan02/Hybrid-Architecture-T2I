@@ -243,7 +243,7 @@ class ImageDataset(Dataset):
 
 BATCHSIZE = 48
 CODEBOOKDIM = 1024
-EMBEDDIM = 1025
+EMBEDDIM = 1024
 HIDDENDIM = 256
 INPCHANNELS = 128
 torchDataset = ImageDataset(data, rootDir=datasetPath)
