@@ -26,7 +26,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 wandb.init(
     project="HYBRID-T2I",  
     name="vqvae",    
-    id="znv3kei1",  
+    id="tmvt1l8i",  
     resume="allow",
 )
 
@@ -137,29 +137,21 @@ class VecQVAE(nn.Module):
 
         self.decoder = nn.Sequential(
             nn.Conv2d(embedDim, 4 * hiddenDim, 1),
-            nn.BatchNorm2d(4 * hiddenDim),
             nn.ReLU(inplace=True),
-            
+        
             ResidualBlock(4 * hiddenDim),
             ResidualBlock(4 * hiddenDim),
-            nn.ConvTranspose2d(4 * hiddenDim, 2 * hiddenDim, 4, 2, 1),
-            nn.BatchNorm2d(2 * hiddenDim),
+            nn.Conv2d(4 * hiddenDim, 2 * hiddenDim, 3, padding=1),
             nn.ReLU(inplace=True),
-            
+        
             ResidualBlock(2 * hiddenDim),
             ResidualBlock(2 * hiddenDim),
-            nn.ConvTranspose2d(2 * hiddenDim, hiddenDim, 4, 2, 1),
-            nn.BatchNorm2d(hiddenDim),
+            nn.Conv2d(2 * hiddenDim, hiddenDim, 3, padding=1),
             nn.ReLU(inplace=True),
-            
+        
             ResidualBlock(hiddenDim),
             ResidualBlock(hiddenDim),
-            nn.ConvTranspose2d(hiddenDim, hiddenDim, 4, 2, 1),
-            nn.BatchNorm2d(hiddenDim),
-            nn.ReLU(inplace=True),
-            
             nn.Conv2d(hiddenDim, inChannels, 1),
-            nn.Sigmoid()
         )
 
     
@@ -178,7 +170,7 @@ class VecQVAE(nn.Module):
 
     def forward(self, x):
         batch_size, inChannels, height, width = x.shape
-        encodedOut = self.encoderBlock(x)
+        encodedOut = x #self.encoderBlock(x)
         batch_size, encoded_channel, encoded_height, encoded_width = encodedOut.shape
         
         # print(f"Encoded Shape: {encodedOut.shape}")
@@ -242,8 +234,8 @@ class ImageDataset(Dataset):
 # img.shape
 
 BATCHSIZE = 48
-CODEBOOKDIM = 1024
-EMBEDDIM = 1024
+CODEBOOKDIM = 2048
+EMBEDDIM = 128
 HIDDENDIM = 256
 INPCHANNELS = 128
 torchDataset = ImageDataset(data, rootDir=datasetPath)
@@ -325,9 +317,10 @@ for each_epoch in range(start_epoch, epochs):
         # ssim_loss = 1.0 - ssim_score
 
         # reconstruction_loss = torch.mean((Y - decoderOut)**2)
+        # print(Y)
         reconstruction_loss = torch.mean(torch.abs(Y - decoderOut))
         
-        loss = reconstruction_loss + codebook_loss + 0.2 * commitment_loss + 0.1 * diversity_loss #+ 0.1 * ssim_loss
+        loss = reconstruction_loss + codebook_loss +  0.2 * commitment_loss + 0.1 * diversity_loss #+ 0.1 * ssim_loss
         vqvaeloss += loss.item()
 
         
