@@ -21,7 +21,6 @@ from torchvision import transforms
 import wandb
 import kornia
 from torchvision.models import vgg16
-import os
 from torch.cuda.amp import autocast, GradScaler
 
 
