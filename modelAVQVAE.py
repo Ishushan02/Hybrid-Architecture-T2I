@@ -19,14 +19,21 @@ from diffusers import AutoencoderDC
 import gc
 from torchvision import transforms
 import wandb
+import kornia
+from torchvision.models import vgg16
+import os
+from torch.cuda.amp import autocast, GradScaler
+
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 wandb.init(
     project="HYBRID-T2I",  
-    name="vqvae",    
-    id="tmvt1l8i",  
+    name="vqvae-2",    
+    id="zgixhfwe",  
     resume="allow",
 )
 
@@ -69,11 +76,13 @@ class VectorQuantizeImage(nn.Module):
 
         
         avg_probs = torch.mean(encodings, dim=0)
-        log_encoding_sum = -torch.sum(avg_probs * torch.log(avg_probs + 1e-10))
+        log_encoding_sum = -torch.sum(avg_probs * torch.log(avg_probs + self.eps))
         perplexity = torch.exp(log_encoding_sum)
 
         entropy = log_encoding_sum
-        normalized_entropy = entropy / torch.log(torch.tensor(self.codeBookDim, device=x.device))
+        # normalized_entropy = entropy / torch.log(torch.tensor(self.codeBookDim, device=x.device))
+        normalized_entropy = entropy / torch.log(torch.tensor(self.codeBookDim, device=x.device, dtype=x.dtype))
+
         diversity_loss = 1.0 - normalized_entropy
 
         return quantized, encoding_indices, perplexity, diversity_loss
@@ -136,22 +145,63 @@ class VecQVAE(nn.Module):
         self.vector_quantize = VectorQuantizeImage(codeBookDim=codeBookdim,embeddingDim=embedDim)
 
         self.decoder = nn.Sequential(
-            nn.Conv2d(embedDim, 4 * hiddenDim, 1),
+            # nn.Conv2d(embedDim, 4 * hiddenDim, 1),
+            # nn.ReLU(inplace=True),
+        
+            # ResidualBlock(4 * hiddenDim),
+            # ResidualBlock(4 * hiddenDim),
+            # nn.Conv2d(4 * hiddenDim, 2 * hiddenDim, 3, padding=1),
+            # nn.ReLU(inplace=True),
+        
+            # ResidualBlock(2 * hiddenDim),
+            # ResidualBlock(2 * hiddenDim),
+            # nn.Conv2d(2 * hiddenDim, hiddenDim, 3, padding=1),
+            # nn.ReLU(inplace=True),
+        
+            # ResidualBlock(hiddenDim),
+            # ResidualBlock(hiddenDim),
+            # nn.Conv2d(hiddenDim, inChannels, 1),
+            nn.Conv2d(embedDim, 4 * hiddenDim, 3, padding=1),
+            nn.BatchNorm2d(4 * hiddenDim),
             nn.ReLU(inplace=True),
         
             ResidualBlock(4 * hiddenDim),
             ResidualBlock(4 * hiddenDim),
-            nn.Conv2d(4 * hiddenDim, 2 * hiddenDim, 3, padding=1),
+        
+            # Upsample 1: H/8 → H/4
+            nn.ConvTranspose2d(
+                4 * hiddenDim, 2 * hiddenDim,
+                kernel_size=4, stride=2, padding=1
+            ),
+            nn.BatchNorm2d(2 * hiddenDim),
             nn.ReLU(inplace=True),
         
             ResidualBlock(2 * hiddenDim),
             ResidualBlock(2 * hiddenDim),
-            nn.Conv2d(2 * hiddenDim, hiddenDim, 3, padding=1),
+        
+            # Upsample 2: H/4 → H/2
+            nn.ConvTranspose2d(
+                2 * hiddenDim, hiddenDim,
+                kernel_size=4, stride=2, padding=1
+            ),
+            nn.BatchNorm2d(hiddenDim),
             nn.ReLU(inplace=True),
         
             ResidualBlock(hiddenDim),
             ResidualBlock(hiddenDim),
-            nn.Conv2d(hiddenDim, inChannels, 1),
+        
+            # Upsample 3: H/2 → H
+            nn.ConvTranspose2d(
+                hiddenDim, hiddenDim,
+                kernel_size=4, stride=2, padding=1
+            ),
+            nn.BatchNorm2d(hiddenDim),
+            nn.ReLU(inplace=True),
+        
+            # Final reconstruction
+            nn.Conv2d(hiddenDim, inChannels, kernel_size=3, padding=1),
+            # nn.Sigmoid()
+            nn.Tanh()
         )
 
     
@@ -170,7 +220,7 @@ class VecQVAE(nn.Module):
 
     def forward(self, x):
         batch_size, inChannels, height, width = x.shape
-        encodedOut = x #self.encoderBlock(x)
+        encodedOut = self.encoderBlock(x)
         batch_size, encoded_channel, encoded_height, encoded_width = encodedOut.shape
         
         # print(f"Encoded Shape: {encodedOut.shape}")
@@ -198,7 +248,7 @@ class VecQVAE(nn.Module):
 # quantized_latents, decoderOut, codebook_loss, commitment_loss, encoding_indices, perplexity, diversity_loss = VQ(test)
 # quantized_latents.shape, decoderOut.shape, codebook_loss, commitment_loss, encoding_indices.shape, perplexity, diversity_loss
 
-DCAEEncoder = AutoencoderDC.from_pretrained(f"mit-han-lab/dc-ae-f64c128-in-1.0-diffusers", torch_dtype=torch.float32).to(device).eval()
+# DCAEEncoder = AutoencoderDC.from_pretrained(f"mit-han-lab/dc-ae-f64c128-in-1.0-diffusers", torch_dtype=torch.float32).to(device).eval()
 
 datasetPath = "Tiny-Recursive-Model-for-Text-To-Image-Generation/"
 data = pd.read_csv(datasetPath + "dataset/COCO2017.csv")
@@ -211,8 +261,10 @@ class ImageDataset(Dataset):
         self.data = data
         self.rootDir = rootDir
         self.transform = transforms.Compose([
-            transforms.Resize((512, 512)),
-            transforms.ToTensor()])
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5]*3, [0.5]*3)
+        ])
         
     def __len__(self):
         return len(self.data)
@@ -234,12 +286,12 @@ class ImageDataset(Dataset):
 # img.shape
 
 BATCHSIZE = 48
-CODEBOOKDIM = 2048
+CODEBOOKDIM = 1024
 EMBEDDIM = 128
 HIDDENDIM = 256
-INPCHANNELS = 128
+INPCHANNELS = 3
 torchDataset = ImageDataset(data, rootDir=datasetPath)
-dataloader = DataLoader(torchDataset, batch_size=BATCHSIZE, shuffle = True)
+dataloader = DataLoader(torchDataset, batch_size=BATCHSIZE, shuffle = True, num_workers=8, pin_memory=True,persistent_workers=True)
 modelA = VecQVAE(inChannels = INPCHANNELS, hiddenDim = HIDDENDIM, codeBookdim = CODEBOOKDIM, embedDim = EMBEDDIM).to(device)
 modelA = torch.nn.DataParallel(modelA)
 modelA.to(device)
@@ -250,12 +302,30 @@ optimizerA = torch.optim.Adam([
                     {'params': modelA.module.encoder.parameters(), 'lr': 2e-4},
                     {'params': modelA.module.decoder.parameters(), 'lr': 2e-4},
                     {'params': modelA.module.vector_quantize.parameters(), 'lr': 1e-4}
-                ], weight_decay=1e-5)
+                ])#, weight_decay=1e-5)
 schedulerA = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizerA, T_0=10, T_mult=2, eta_min=1e-6
             )
 epochs = 1000
+VGG_MODEL = vgg16(pretrained=True).features[:17].eval().to(device)
+for param in VGG_MODEL.parameters():
+    param.requires_grad = False
 
+def perceptualLoss(pred, target):
+    vgg_pred = VGG_MODEL(pred)
+    vgg_true = VGG_MODEL(target)
+
+    perceptualoss = Fn.mse_loss(vgg_pred, vgg_true)
+    return perceptualoss
+
+def lab_color_loss(pred, target):
+    pred_norm = (pred + 1.0) / 2.0
+    target_norm = (target + 1.0) / 2.0
+    
+    pred_lab = kornia.color.rgb_to_lab(pred_norm)
+    target_lab = kornia.color.rgb_to_lab(target_norm)
+    loss = Fn.mse_loss(pred_lab, target_lab)
+    return loss
 
 start_epoch = 0
 # baseDir = os.getcwd()#os.path.dirname(__file__)
@@ -275,17 +345,20 @@ if os.path.exists(checkpoint_path):
     schedulerA.load_state_dict(checkpoint['scheduler_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
     lowestVQVAELoss = checkpoint['lowestLoss']
+    # lowestVQVAELoss = 10.9482
     for state in optimizerA.state.values():
         for k, v in state.items():
             if isinstance(v, torch.Tensor):
                 state[k] = v.to(device)
     print(f"Resuming from epoch {start_epoch} and lowest loss is {lowestVQVAELoss}")
 else:
-    lowestVQVAELoss = 2.53431
+    lowestVQVAELoss = float('inf')
     print("Loading pretrained model...")
 
 
 # lowestVQVAELoss = 2.53431
+scaler = GradScaler()
+
 
 for each_epoch in range(start_epoch, epochs):
     modelA.train()
@@ -299,55 +372,81 @@ for each_epoch in range(start_epoch, epochs):
     loop = tqdm(dataloader, f"{each_epoch}/{epochs}")
     perplexities = []
 
-    for images in loop:
-        images = images.to(device)
-        with torch.no_grad():
-            X = DCAEEncoder.encode(images).latent
+    for X in loop:
+        # images = images.to(device)
+        # with torch.no_grad():
+        #     X = DCAEEncoder.encode(images).latent
         
         X = X.to(device)
-        Y = X
-        # print(X.shape, Y.shape)
+        
     #     break
     # break
-        
-        quantized_latents, decoderOut, codebook_loss, commitment_loss, encoding_indices, perplexity, diversity_loss = modelA(X)
 
-        # ssim_score = ssim(Y, torch.clamp(decoderOut, 0.0, 1.0), data_range=1.0)
-        # ssim_score = ssim(Y, decoderOut, data_range=1.0)
-        # ssim_loss = 1.0 - ssim_score
-
-        # reconstruction_loss = torch.mean((Y - decoderOut)**2)
-        # print(Y)
-        reconstruction_loss = torch.mean(torch.abs(Y - decoderOut))
+        with autocast():
+            quantized_latents, decoderOut, codebook_loss, commitment_loss, encoding_indices, perplexity, diversity_loss = modelA(X)
+            reconstruction_loss = Fn.l1_loss(decoderOut, X)
+            # colorLoss = lab_color_loss(decoderOut, X)
+            perceptualoss = perceptualLoss(decoderOut, X)
+            
+        with torch.cuda.amp.autocast(enabled=False):
+            colorLoss = lab_color_loss(decoderOut.float(), X.float())
+            
+        loss = reconstruction_loss + 0.2 * commitment_loss + 0.1 * diversity_loss + 0.1 * perceptualoss + 0.01 * colorLoss# + codebook_loss
+        # quantized_latents, decoderOut, codebook_loss, commitment_loss, encoding_indices, perplexity, diversity_loss = modelA(X)
+        # # print(decoderOut.shape, X.shape)
+        # reconstruction_loss = Fn.l1_loss(decoderOut, X)
+        # colorLoss = lab_color_loss(decoderOut, X)
+        # perceptualoss = perceptualLoss(decoderOut, X)
         
-        loss = reconstruction_loss + codebook_loss +  0.2 * commitment_loss + 0.1 * diversity_loss #+ 0.1 * ssim_loss
+        # loss = reconstruction_loss + codebook_loss +  0.2 * commitment_loss + 0.1 * diversity_loss + 0.1 * perceptualoss + 0.1 * colorLoss 
         vqvaeloss += loss.item()
 
         
         reconstruct_loss += reconstruction_loss.item()
         diverse_loss += diversity_loss.item()
-        codeb_loss += codebook_loss.item()
+        # codeb_loss += codebook_loss.item()
         commit_loss += commitment_loss.item()
         # ssim_loss += ssim_loss.item()
-        perplexities.append(perplexity)
-        
-        
+        perplexities.append(perplexity.item())
+
         optimizerA.zero_grad()
-        loss.backward()
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizerA)
         torch.nn.utils.clip_grad_norm_(modelA.parameters(), max_norm=1.0)
-        optimizerA.step()
-        loop.set_postfix({"TotalL": f"{vqvaeloss}", "ReconsL": f"{reconstruct_loss}", "CodeL":f"{codeb_loss}",
-                          "CommitL":f"{commitment_loss}", "Perplexity":f"{perplexity}", "Diversity Loss":f"{diverse_loss}",# "SSIM Loss":f"{ssim_loss}"
-                          })
-    #     break
+        scaler.step(optimizerA)
+        scaler.update()
+        
+        
+        # optimizerA.zero_grad()
+        # loss.backward()
+        # torch.nn.utils.clip_grad_norm_(modelA.parameters(), max_norm=1.0)
+        # optimizerA.step()
+        # current_batch_loss = loss.item()
+
+        # loop.set_postfix({"TotalL": f"{current_batch_loss}", "ReconsL": f"{reconstruct_loss}", #"CodeL":f"{codeb_loss}",
+        #                   "CommitL":f"{commitment_loss}", "Perplexity":f"{perplexity}", "Diversity Loss":f"{diverse_loss}",# "SSIM Loss":f"{ssim_loss}"
+        #                   "Perceptual Loss":f"{perceptualoss}", "Color Loss":f"{colorLoss}"
+        #                   })
+        loop.set_postfix({
+            "TotalL": f"{loss.item():.6f}",
+            "ReconsL": f"{reconstruction_loss.item():.6f}",
+            "CommitL": f"{commitment_loss.item():.6f}",
+            "Perplexity": f"{perplexity.item():.6f}",
+            "DivL": f"{diversity_loss.item():.6f}",
+            "PercL": f"{perceptualoss.item():.6f}",
+            "ColorL": f"{colorLoss.item():.6f}"
+            })
+        # break
     # break
 
     average_perplexity = sum(perplexities)/len(perplexities)
     vqvaeloss /= len(dataloader)   
     reconstruct_loss /= len(dataloader)   
-    codeb_loss /= len(dataloader)   
+    # codeb_loss /= len(dataloader)   
     commit_loss /= len(dataloader)   
     diverse_loss /= len(dataloader)
+    perceptualoss /= len(dataloader)
+    colorLoss /= len(dataloader)
     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
 
     if(vqvaeloss < lowestVQVAELoss):
@@ -376,10 +475,12 @@ for each_epoch in range(start_epoch, epochs):
         "VQVAE LR": optimizerA.param_groups[0]['lr'],
         "VQVAE Loss": vqvaeloss,
         "Reconstruction Loss": reconstruct_loss,
-        "Codebook Loss": codeb_loss,
+        # "Codebook Loss": codeb_loss,
         "Commitment Loss": commit_loss,
         "Diversity Loss": diverse_loss,
         "Perplexity": average_perplexity,
+        "Perceptual Loss":perceptualoss,
+        "Color Loss":colorLoss
        # "SSIM Loss":ssim_loss,
     })
     schedulerA.step()
