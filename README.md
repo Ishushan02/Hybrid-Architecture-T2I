@@ -1,6 +1,15 @@
 # Hybrid-Architecture-T2I
 Trying My own New Architecture for Text To Image Generation
 
+The Project is divided in 2 phases, 
+Phase 1: Training the VQVAE on Images, such that codebook learns to produce latents of any sort of Images.
+Phase 2: Is to train a Transformer which takes input Text Embedding and produces Image Latents, which then we can decode and generate images from VQVAE.
+
+## Phase 1
+Phase 1 is Training the VQVAE
+![VQVAE-Flow](Images/Hybrid-Text-To-Image Generation.png)
+
+
 Like I have got quite good Ideas to use on, like
 - The Intution from Nested Learning Paper of alpha, beta, gamma, delta and theta waves, infuse this ideology in Transformer Architecture such that it behaves as brain like waves each responsible for different functionality
 - Infuse SwiGLU Architecture, Llama paper showed it it didn't give proper reason why it's working but it works better the GeLU or ReLU
