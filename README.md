@@ -7,7 +7,7 @@ Phase 2: Is to train a Transformer which takes input Text Embedding and produces
 
 ## Phase 1
 Phase 1 is Training the VQVAE
-![VQVAE-Flow](Images/Hybrid-Text-To-Image-Generation.png)
+![VQVAE-Flow](Images/Hybrid-Text-To-Image-Generation.jpg)
 
 
 Like I have got quite good Ideas to use on, like
