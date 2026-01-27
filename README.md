@@ -6,8 +6,11 @@ Phase 1: Training the VQVAE on Images, such that codebook learns to produce late
 Phase 2: Is to train a Transformer which takes input Text Embedding and produces Image Latents, which then we can decode and generate images from VQVAE.
 
 ## Phase 1
-Phase 1 is Training the VQVAE
-![VQVAE-Flow](Images/Hybrid-Text-To-Image-Generation.jpg)
+Phase 1 is Training the VQVAE to Convert Images to Indices
+![VQVAE-Flow](Images/Hybrid-Text-To-Image-Generation-P1.jpg)
+
+Phase 2 is Training the Decoder to predict Image Indices from Text Embedding
+![Decoder-Flow](Images/Hybrid-Text-To-Image-Generation-P2.jpg)
 
 
 Like I have got quite good Ideas to use on, like
