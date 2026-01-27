@@ -343,13 +343,12 @@ class MultiHeadSelfAttentionGating(nn.Module):
         out = att @ v 
 
         # print(out.shape)
+        out = out.transpose(1, 2).reshape(BatchSize, seqLen, self.embedDimension)
         gate = torch.sigmoid(self.gateProj(x))
-        gate = gate.reshape(BatchSize, seqLen, self.numHeads, self.headDim).transpose(1, 2)
         # print(gate.shape, out.shape)
 
         out = out * gate
 
-        out = out.transpose(1, 2).reshape(BatchSize, seqLen, EmbedDim)
         out = self.outProjection(out)
         out = self.drop(out)
         return out
@@ -409,8 +408,6 @@ class NLayerT2I(nn.Module):
         self.outDimension = outDimension
 
         self.linearTextProjection = nn.Linear(textEmbed, embedDimension)
-
-        TextToImageLatentModel(embedDimension = self.embedDimension, textEmbed = self.textEmbed,  numHeads = self.numHeads, latentDim = 2048)
 
         self.nAttentionBlocks = nn.ModuleList([
             TextToImageLatentModel(embedDimension = self.embedDimension, textEmbed = self.textEmbed,  numHeads = self.numHeads, latentDim = 2048)
