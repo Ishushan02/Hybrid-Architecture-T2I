@@ -9,6 +9,7 @@ Phase 2: Is to train a Transformer which takes input Text Embedding and produces
 Phase 1 is Training the VQVAE to Convert Images to Indices
 ![VQVAE-Flow](Images/Hybrid-Text-To-Image-Generation-P1.jpg)
 
+## Phase 2
 Phase 2 is Training the Decoder to predict Image Indices from Text Embedding
 ![Decoder-Flow](Images/Hybrid-Text-To-Image-Generation-P2.jpg)
 
