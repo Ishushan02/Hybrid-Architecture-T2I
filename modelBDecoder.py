@@ -16,6 +16,8 @@ from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 import random
 from einops import rearrange
+from transformers import CLIPTokenizer, CLIPTextModel
+
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 torch.backends.cudnn.benchmark = True
@@ -441,9 +443,16 @@ class NLayerT2I(nn.Module):
 # out.shape
 
 
-modelName = "nomic-ai/nomic-embed-text-v1.5" #"nomic-ai/nomic-embed-text-v1"
-tokenizer = AutoTokenizer.from_pretrained(modelName)
-TEXTMODEL = AutoModel.from_pretrained(modelName, trust_remote_code=True)
+# modelName = "nomic-ai/nomic-embed-text-v1.5" #"nomic-ai/nomic-embed-text-v1"
+# tokenizer = AutoTokenizer.from_pretrained(modelName)
+# TEXTMODEL = AutoModel.from_pretrained(modelName, trust_remote_code=True)
+
+TOKENIZER = CLIPTokenizer.from_pretrained(
+    "openai/clip-vit-large-patch14"
+)
+TEXTMODEL = CLIPTextModel.from_pretrained(
+    "openai/clip-vit-large-patch14"
+)
 
 # texts = [
 #     "To dos walking towards each other",
@@ -608,7 +617,8 @@ for each_epoch in range(start_epoch, EPCOHS):
     for caption, image in loop:
         image = image.to(device)
         # caption = caption.to(device)
-        caption = tokenizer(caption, return_tensors='pt', padding='max_length', truncation=True, max_length=512)
+        # caption = tokenizer(caption, return_tensors='pt', padding='max_length', truncation=True, max_length=512)
+        caption = TOKENIZER(caption, padding="max_length", truncation=True, max_length=77, return_tensors="pt")
         with torch.no_grad():
             if(len(image.shape) == 3):
                 image = image.unsqueeze(0)
