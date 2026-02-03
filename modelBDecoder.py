@@ -29,7 +29,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 wandb.init(
     project="HYBRID-T2I",  
     name="transformer-Decoder",    
-    id="1gzdn6z4",  
+    id="bnd3nqzp",  
     resume="allow",
 )
 
@@ -410,6 +410,7 @@ class NLayerT2I(nn.Module):
         self.outDimension = outDimension
 
         self.linearTextProjection = nn.Linear(textEmbed, embedDimension)
+        self.seqExpansion = nn.Linear(77, outDimension)
 
         self.nAttentionBlocks = nn.ModuleList([
             TextToImageLatentModel(embedDimension = self.embedDimension, textEmbed = self.textEmbed,  numHeads = self.numHeads, latentDim = 2048)
@@ -417,7 +418,13 @@ class NLayerT2I(nn.Module):
         ])
 
         self.rmsNorm2 = RMSNorm(self.embedDimension)
-        self.outputLayer = nn.Linear(embedDimension, outDimension)
+        # self.imageProjection = nn.Sequential(
+        #     nn.Linear(embedDimension, embedDimension * 4),
+        #     nn.GELU(),
+        #     nn.Linear(embedDimension * 4, imageSeqLen * CODEBOOKDIM)
+        # )
+        
+        self.outputLayer = nn.Linear(embedDimension, CODEBOOKDIM)
 
     
     def forward(self, x):
@@ -425,15 +432,19 @@ class NLayerT2I(nn.Module):
         batchSize, seqlen, _ = x.shape
 
         x = self.linearTextProjection(x)
-
+        
         for block in self.nAttentionBlocks:
             x = block(x)
 
         x = self.rmsNorm2(x)
-        x = x.mean(1)
-        x = self.outputLayer(x)
+        # x = x.mean(1)
+        # print(" ------BEfor-------- ", x.shape)
+        x = x.transpose(1, 2)
+        x = self.seqExpansion(x)
+        x = x.transpose(1, 2)
+        # print(" ------After------- ", x.shape)
         # x = x.reshape(batchSize, self.outDimension)
-
+        x = self.outputLayer(x)
         return x
 
 
@@ -569,7 +580,8 @@ modelB = modelB.to(device)
 print(f"Total Parameters: {sum(p.numel() for p in modelB.parameters() if p.requires_grad)}")
 
 stepsPerEpochs = len(dataloader)
-lossFn =  nn.MSELoss()
+# lossFn =  nn.MSELoss()
+lossFn = nn.CrossEntropyLoss()
 optimizer = torch.optim.AdamW(params=modelB.parameters(), lr=5e-5, weight_decay=1e-2)#2e-5)#, weight_decay=3e-2, eps=1e-10)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizer, T_0= 5 * stepsPerEpochs, T_mult=2, eta_min=1e-6
@@ -600,10 +612,10 @@ if os.path.exists(checkpoint_path):
     print(f"Resuming from epoch {start_epoch} and lowest loss is {lowestDecoderLoss}")
 else:
     lowestDecoderLoss = float('inf')
-    print("Loading pretrained model...")
+    print("---------------MODEL B, starting From the Begining... ----------------")
 
 
-scaler = GradScaler()
+# scaler = GradScaler()
 
 for each_epoch in range(start_epoch, EPCOHS):
     modelB.train()
@@ -615,6 +627,7 @@ for each_epoch in range(start_epoch, EPCOHS):
     loop = tqdm(dataloader, f"{each_epoch}/{EPCOHS}")
 
     for caption, image in loop:
+        batchSize = image.shape[0]
         image = image.to(device)
         # caption = caption.to(device)
         # caption = tokenizer(caption, return_tensors='pt', padding='max_length', truncation=True, max_length=512)
@@ -630,31 +643,38 @@ for each_epoch in range(start_epoch, EPCOHS):
         X = X.to(device)
         Y = Y.to(device)   
 
-        with autocast():
-            output = modelB(X)
-            # print(output.shape, Y.shape)
-            Y = Y.view(output.shape)
-            Y = Y.float()
-            lossVal = lossFn(output, Y)
-        # output = modelB(X)
+        # with autocast():
+        #     output = modelB(X)
         #     # print(output.shape, Y.shape)
+        #     Y = Y.view(output.shape)
+        #     Y = Y.float()
+        #     lossVal = lossFn(output, Y)
+        output = modelB(X)
+        # print(output.shape, Y.shape)
+        # print(output.view(-1, CODEBOOKDIM).shape, Y.view(-1).shape)
+    #     break
+    # break
+        # print(X.shape, Y.shape, output.shape)
+        lossVal = lossFn(output.view(-1, CODEBOOKDIM), Y.view(-1))
+        latentLoss += lossVal.item()
+        
         # Y = Y.view(output.shape)
         # Y = Y.float()
         # lossVal = lossFn(output, Y)
-        latentLoss += lossVal.item()
+        # latentLoss += lossVal.item()
 
-
-        optimizer.zero_grad()
-        scaler.scale(lossVal).backward()
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(modelB.parameters(), max_norm=1.0)
-        scaler.step(optimizer)
-        scaler.update()
 
         # optimizer.zero_grad()
-        # lossVal.backward()
+        # scaler.scale(lossVal).backward()
+        # scaler.unscale_(optimizer)
         # torch.nn.utils.clip_grad_norm_(modelB.parameters(), max_norm=1.0)
-        # optimizer.step()
+        # scaler.step(optimizer)
+        # scaler.update()
+
+        optimizer.zero_grad()
+        lossVal.backward()
+        torch.nn.utils.clip_grad_norm_(modelB.parameters(), max_norm=1.0)
+        optimizer.step()
 
         loop.set_postfix({
             "Loss ": f"{lossVal.item():.6f}",
