@@ -2,3 +2,4 @@ models/vqvae/vqvae.pt
 Images/trainVQVAEImages
 models/
 Images/generated/
+modelBDecoderSSM.py
