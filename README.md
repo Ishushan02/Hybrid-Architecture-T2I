@@ -1,5 +1,5 @@
 # Hybrid-Architecture-T2I
-Trying My own New Architecture for Text To Image Generation
+In Progress Project :: Trying My own New Architecture for Text To Image Generation with an Hybrid Approach Training the Architecture with Embeddings rather than Tokens inspired from LJEPA Paper.
 
 ## Results of Architecture Learning to Identify Colors
 ![Result](Images/generated_results.gif)
