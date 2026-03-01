@@ -1,6 +1,10 @@
 # Hybrid-Architecture-T2I
 Trying My own New Architecture for Text To Image Generation
 
+## Results of Architecture Learning to Identify Colors
+![Result](Images/generated_results.gif)
+{It is just trained for about 65 Epochs}
+
 The Project is divided in 2 phases, 
 Phase 1: Training the VQVAE on Images, such that codebook learns to produce latents of any sort of Images.
 Phase 2: Is to train a Transformer which takes input Text Embedding and produces Image Latents, which then we can decode and generate images from VQVAE.
@@ -13,7 +17,7 @@ Phase 1 is Training the VQVAE to Convert Images to Indices
 Phase 2 is Training the Decoder to predict Image Indices from Text Embedding
 ![Decoder-Flow](Images/Hybrid-Text-To-Image-Generation-P2.jpg)
 
-
+<!-- 
 Like I have got quite good Ideas to use on, like
 - The Intution from Nested Learning Paper of alpha, beta, gamma, delta and theta waves, infuse this ideology in Transformer Architecture such that it behaves as brain like waves each responsible for different functionality
 - Infuse SwiGLU Architecture, Llama paper showed it it didn't give proper reason why it's working but it works better the GeLU or ReLU
@@ -38,4 +42,4 @@ Cool, After certain researching and paper reading..
 No one has tried the approach of VQVAE + Transformer... for text to Image Generation... well let's try it out.. 
 Remeber we succeded greatly when doing text to Video using VQVAE.. that really showed good results, hopefully this works out well.
 
-Have Started the VQVAE Pipeline Training over the Image latents when it is compressed on by DCAE
+Have Started the VQVAE Pipeline Training over the Image latents when it is compressed on by DCAE -->
